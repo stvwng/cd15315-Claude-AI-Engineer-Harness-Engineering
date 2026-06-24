@@ -1,0 +1,640 @@
+{
+  "project": "module-02-retail-context-strategy",
+  "title": "Retail Customer Support Context Strategy",
+  "module": 2,
+  "course": "Harness Engineering",
+  "industry_vertical": "Retail",
+  "version": "0.2.1",
+  "spec": "PRD.md",
+  "estimated_learner_hours": 4,
+  "runtime_budget_usd": 25,
+  "project_api_spend_target_usd": 3,
+  "revision_notes": "v0.2.0: Exam-guide / Playbook / cookbook alignment pass. Token-counting mechanics softened (Exam Guide out-of-scopes tokenization specifics) \u2014 AC-02.4 now grades consistency not algorithm; AC-08.1 replaced AST `len // 4` ban with consistency check. AC-02 gains AC-02.5 documenting chosen methodology in README. AC-08.6 'Why this layout?' must address the pass-complete-history tension and use the word 'scratchpad' for the Playbook synonym. AC-08.8 'What I'd do next' must name server-side context-editing betas (`clear_tool_uses_20250919`, `compact_20260112`). NG-10 (Claude Code /compact, Module 8) and NG-11 (server-side context-editing betas \u2014 application-side is the LO contrast) added. OQ-1 resolved as informational; OQ-7 added on app-side vs server-side; OQ-8 added on Haiku vs Sonnet default.",
+  "exam_guide_alignment": {
+    "primary_tasks": [
+      "Task 5.1"
+    ],
+    "domain": "Domain 5 \u2014 Context Management & Reliability",
+    "domain_weight_supported": "Domain 5 (15% of scored content) \u2014 cross-cutting foundation"
+  },
+  "learning_objective_coverage": [
+    "LO 1 \u2014 Diagram context window anatomy",
+    "LO 2 \u2014 Explain harness assembly / maintenance / compression",
+    "LO 3 \u2014 Calculate token cost implications",
+    "LO 4 \u2014 Apply 'lost in the middle' to placement",
+    "LO 5 \u2014 Extract case facts into persistent block",
+    "LO 6 \u2014 Trim verbose tool outputs",
+    "LO 7 \u2014 Position key findings at boundaries with section headers"
+  ],
+  "definition_of_done": [
+    "all acceptance criteria checked",
+    "pytest green for the story's test files",
+    "mypy or pyright green for retail_context/",
+    "ruff (or equivalent) green",
+    "changes committed with a message referencing the story ID"
+  ],
+  "stories": [
+    {
+      "id": "US-01",
+      "title": "Project scaffold runs in Docker",
+      "role": "learner",
+      "want": "a runnable Docker-based project skeleton",
+      "benefit": "I can start building without fighting environment setup",
+      "passes": false,
+      "acceptance_criteria": [
+        {
+          "id": "AC-01.1",
+          "text": "docker compose up (or docker build && docker run) starts the container without error",
+          "met": false
+        },
+        {
+          "id": "AC-01.2",
+          "text": "ANTHROPIC_API_KEY is read from env; container fails fast with a clear message if missing",
+          "met": false
+        },
+        {
+          "id": "AC-01.3",
+          "text": "python -m retail_context --version prints a semver string and exits 0",
+          "met": false
+        },
+        {
+          "id": "AC-01.4",
+          "text": "pyproject.toml pins anthropic to a specific version",
+          "met": false
+        },
+        {
+          "id": "AC-01.5",
+          "text": "pytest reports at least one passing smoke test (test_hello_claude)",
+          "met": false
+        },
+        {
+          "id": "AC-01.6",
+          "text": "mypy or pyright passes on retail_context/",
+          "met": false
+        }
+      ]
+    },
+    {
+      "id": "US-02",
+      "title": "Transcript loader and baseline token accounting",
+      "role": "learner",
+      "want": "to load the 48-turn transcript and measure its baseline token cost",
+      "benefit": "every later compression step has a concrete number to beat",
+      "exam_alignment": [
+        "Task 5.1 Knowledge: token economics",
+        "Task 5.1 Knowledge: context window anatomy"
+      ],
+      "lo_alignment": [
+        "LO 3"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-02.1",
+          "text": "retail_context.transcript.load(path) returns a typed Transcript with turns, segments, and token_count",
+          "met": true
+        },
+        {
+          "id": "AC-02.2",
+          "text": "fixture data/transcript_48turns.json has exactly 48 turns partitioned into refund (1\u201314), subscription (15\u201328), payment_update (29\u201348)",
+          "met": true
+        },
+        {
+          "id": "AC-02.3",
+          "text": "baseline token_count for the full transcript is between 42,000 and 52,000",
+          "met": true
+        },
+        {
+          "id": "AC-02.4",
+          "text": "token counting uses a single canonical retail_context.tokens.count function invoked consistently for every measurement (baseline, per-section, post-compression); algorithm choice is the learner's (Anthropic count_tokens, tiktoken, or documented deterministic estimator) \u2014 Exam Guide out-of-scopes tokenization specifics, so we grade methodology not arithmetic",
+          "met": true
+        },
+        {
+          "id": "AC-02.5",
+          "text": "chosen token-counting methodology is documented in README in one sentence so the reviewer can interpret the reported numbers",
+          "met": true
+        },
+        {
+          "id": "AC-02.6",
+          "text": "test_transcript_loader asserts turn count, partition boundaries, and token_count range",
+          "met": true
+        }
+      ]
+    },
+    {
+      "id": "US-03",
+      "title": "Case-facts extraction into a persistent block",
+      "role": "support lead",
+      "want": "structured transactional facts pulled into a single block at the top of context",
+      "benefit": "the model never scans 47k tokens to recover an order ID, refund amount, or payment status",
+      "exam_alignment": [
+        "Task 5.1 Skills: 'case facts' extraction into persistent block"
+      ],
+      "lo_alignment": [
+        "LO 5",
+        "LO 7"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-03.1",
+          "text": "retail_context.case_facts.extract(transcript) returns a CaseFacts model with the 12 required fields",
+          "met": true
+        },
+        {
+          "id": "AC-03.2",
+          "text": "extraction is either deterministic or a logged Claude call (input+output written to runs/<run_id>/case_facts_call.json) using claude-haiku-4-5 by default",
+          "met": true
+        },
+        {
+          "id": "AC-03.3",
+          "text": "serialized case-facts block is <= 600 tokens",
+          "met": true
+        },
+        {
+          "id": "AC-03.4",
+          "text": "block is rendered as human-readable Markdown with explicit section headers and a fixed key order",
+          "met": true
+        },
+        {
+          "id": "AC-03.5",
+          "text": "test_case_facts_extraction asserts every required field is populated and non-null",
+          "met": true
+        },
+        {
+          "id": "AC-03.6",
+          "text": "missing-field behavior: raises CaseFactExtractionError listing the missing fields \u2014 does not silently fill with null or 'unknown'",
+          "met": true
+        }
+      ],
+      "required_fields": [
+        "customer_id",
+        "refund_order_id",
+        "refund_amount_usd",
+        "refund_status",
+        "subscription_id",
+        "subscription_plan",
+        "subscription_cancel_reason",
+        "subscription_status",
+        "active_payment_method_last4",
+        "new_payment_method_last4",
+        "payment_update_failure_code",
+        "payment_update_status"
+      ]
+    },
+    {
+      "id": "US-04",
+      "title": "Tool-output pruning for verbose lookup_order responses",
+      "role": "support lead",
+      "want": "lookup_order's 40+ field response trimmed to the 5 fields relevant for return-eligibility reasoning",
+      "benefit": "verbose tool outputs do not balloon context as the conversation accumulates",
+      "exam_alignment": [
+        "Task 5.1 Skills: trim verbose tool outputs to relevant fields"
+      ],
+      "lo_alignment": [
+        "LO 6"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-04.1",
+          "text": "retail_context.pruner.prune_lookup_order(raw) returns a dict with exactly the 5 required keys, in order, and no others",
+          "met": true
+        },
+        {
+          "id": "AC-04.2",
+          "text": "data/lookup_order_response.json contains >= 40 distinct top-level fields",
+          "met": true
+        },
+        {
+          "id": "AC-04.3",
+          "text": "pruner is deterministic field selection, not an LLM call (no anthropic import in pruner.py)",
+          "met": true
+        },
+        {
+          "id": "AC-04.4",
+          "text": "pruned output is <= 200 tokens",
+          "met": true
+        },
+        {
+          "id": "AC-04.5",
+          "text": "test_prune_lookup_order asserts kept set is exactly {order_id, order_date, order_total_usd, fulfillment_status, return_eligible_until} and that missing-field input raises PrunerMissingFieldError",
+          "met": true
+        },
+        {
+          "id": "AC-04.6",
+          "text": "pruner module docstring explains why each of the 5 kept fields matters for return/refund reasoning",
+          "met": true
+        }
+      ],
+      "kept_fields": [
+        "order_id",
+        "order_date",
+        "order_total_usd",
+        "fulfillment_status",
+        "return_eligible_until"
+      ]
+    },
+    {
+      "id": "US-05",
+      "title": "Tiered compression: resolved issues summarized, active issue verbatim",
+      "role": "learner",
+      "want": "resolved issues compressed into short factual summaries while the active issue is preserved verbatim",
+      "benefit": "the model has high-fidelity context where decisions are still being made and low-cost context where they are not",
+      "exam_alignment": [
+        "Task 5.1 Skills: compression strategy \u2014 summarize vs preserve verbatim"
+      ],
+      "lo_alignment": [
+        "LO 2",
+        "LO 3"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-05.1",
+          "text": "retail_context.compressor.summarize_segment(segment) produces a <= 500-token factual summary for refund and subscription segments",
+          "met": true
+        },
+        {
+          "id": "AC-05.2",
+          "text": "each summary contains an opening one-sentence outcome, 3\u20136 bulleted decision-relevant facts, and a closing one-sentence resolution",
+          "met": true
+        },
+        {
+          "id": "AC-05.3",
+          "text": "compression uses claude-haiku-4-5 by default, model configurable; prompt template lives at retail_context/prompts/compression_prompt.md for audit",
+          "met": true
+        },
+        {
+          "id": "AC-05.4",
+          "text": "active payment_update segment is never summarized \u2014 test_active_segment_preserved_verbatim asserts byte-exact preservation",
+          "met": true
+        },
+        {
+          "id": "AC-05.5",
+          "text": "combined token cost of both resolved summaries is <= 1,000 tokens (>= 95% reduction on the resolved portion)",
+          "met": true
+        },
+        {
+          "id": "AC-05.6",
+          "text": "total API spend for one full compression pass is <= $0.10 estimated from token counts and Haiku pricing",
+          "met": true
+        }
+      ]
+    },
+    {
+      "id": "US-06",
+      "title": "Position-aware context assembly",
+      "role": "support lead",
+      "want": "case facts at the top, resolved summaries in the middle, active issue immediately above the new user turn",
+      "benefit": "the 'lost in the middle' attention effect works in our favor",
+      "exam_alignment": [
+        "Task 5.1 Skills: position-aware structuring \u2014 key findings at boundaries"
+      ],
+      "lo_alignment": [
+        "LO 4",
+        "LO 7"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-06.1",
+          "text": "retail_context.assemble.build(transcript) produces context.markdown with sections in exact order: # Case Facts \u2192 # Resolved: Refund inquiry \u2192 # Resolved: Subscription cancellation \u2192 # Active issue: Payment-method update",
+          "met": true
+        },
+        {
+          "id": "AC-06.2",
+          "text": "total assembled token count is <= 24,000 tokens (>= 50% reduction from baseline)",
+          "met": true
+        },
+        {
+          "id": "AC-06.3",
+          "text": "active-issue section body is byte-exact equal to raw turns 29\u201348 concatenated with original turn headers",
+          "met": true
+        },
+        {
+          "id": "AC-06.4",
+          "text": "runs/<run_id>/context.md is written to disk as the canonical reviewer artifact",
+          "met": true
+        },
+        {
+          "id": "AC-06.5",
+          "text": "assembler does not interleave resolved summaries with active text \u2014 section boundaries are exclusive",
+          "met": true
+        },
+        {
+          "id": "AC-06.6",
+          "text": "runs/<run_id>/budget.json records baseline_tokens, assembled_tokens, reduction_pct (computed, not hardcoded), and per-section token counts",
+          "met": true
+        }
+      ],
+      "required_section_order": [
+        "# Case Facts",
+        "# Resolved: Refund inquiry",
+        "# Resolved: Subscription cancellation",
+        "# Active issue: Payment-method update"
+      ]
+    },
+    {
+      "id": "US-07",
+      "title": "Evaluation: compressed context preserves answerability",
+      "role": "reviewer",
+      "want": "a fixed set of evaluation questions answered against the compressed context",
+      "benefit": "I can grade whether the compression strategy preserved the information the agent will need",
+      "lo_alignment": [
+        "LO 2",
+        "LO 3"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-07.1",
+          "text": "python -m retail_context.run --eval loads the assembled context and issues one Claude call per question with the assembled context as system prompt",
+          "met": true
+        },
+        {
+          "id": "AC-07.2",
+          "text": "per-question results written to runs/<run_id>/eval.jsonl with question_id, question, expected_fragment, model_answer, passed, input_tokens, output_tokens",
+          "met": true
+        },
+        {
+          "id": "AC-07.3",
+          "text": "a question passes when expected_fragment.lower() is a substring of model_answer.lower()",
+          "met": true
+        },
+        {
+          "id": "AC-07.4",
+          "text": "pass threshold: >= 5/6 questions pass",
+          "met": true
+        },
+        {
+          "id": "AC-07.5",
+          "text": "control variant (case-facts block removed) makes at least one of Q1/Q6 fail. Q6 is the strict test \u2014 its expected fragment 'in_progress' appears only in the case-facts block; Q1's behavior depends on whether the resolved-refund summary preserved the numeric value verbatim. Q6 must fail; Q1 failing is bonus evidence.",
+          "met": true
+        },
+        {
+          "id": "AC-07.6",
+          "text": "total API spend for one --eval pass (6 questions + 2 control) is <= $0.25",
+          "met": true
+        }
+      ],
+      "eval_questions": [
+        {
+          "id": "Q1",
+          "question": "What was the actual refund amount processed for order ORD-77310?",
+          "expected_fragment": "22.14",
+          "source": "case_facts"
+        },
+        {
+          "id": "Q2",
+          "question": "Why did the customer cancel their subscription?",
+          "expected_fragment": "duplicate",
+          "source": "subscription_summary"
+        },
+        {
+          "id": "Q3",
+          "question": "What is the failure code on the current payment-method update?",
+          "expected_fragment": "AVS_MISMATCH",
+          "source": "active_verbatim"
+        },
+        {
+          "id": "Q4",
+          "question": "What is the last-4 of the new card the customer is trying to add?",
+          "expected_fragment": "7782",
+          "source": "active_verbatim"
+        },
+        {
+          "id": "Q5",
+          "question": "Did the customer receive their subscription proration refund?",
+          "expected_fragment": "prorated",
+          "source": "subscription_summary"
+        },
+        {
+          "id": "Q6",
+          "question": "What is the structured status of the payment-method update issue (exact status token)?",
+          "expected_fragment": "in_progress",
+          "source": "case_facts"
+        }
+      ]
+    },
+    {
+      "id": "US-08",
+      "title": "Anti-pattern audit + README writeup",
+      "role": "reviewer",
+      "want": "automated checks plus a README writeup confirming Module 2 anti-patterns are avoided and the rationale is articulated",
+      "benefit": "grading is consistent",
+      "lo_alignment": [
+        "LO 1",
+        "LO 2",
+        "LO 3",
+        "LO 4"
+      ],
+      "passes": true,
+      "acceptance_criteria": [
+        {
+          "id": "AC-08.1",
+          "text": "pytest tests/test_antipatterns.py passes \u2014 static check that every token count in runs/<run_id>/budget.json is produced by the single canonical retail_context.tokens.count function (consistency, not algorithm, is enforced)",
+          "met": true
+        },
+        {
+          "id": "AC-08.2",
+          "text": "AST check that pruner.py contains no anthropic client import (deterministic, not LLM-driven)",
+          "met": true
+        },
+        {
+          "id": "AC-08.3",
+          "text": "static check that assemble.py builds sections in order Case Facts \u2192 Resolved \u2192 Active (regex on assembled output)",
+          "met": true
+        },
+        {
+          "id": "AC-08.4",
+          "text": "static check that verbatim active segment in context.md matches raw turns 29\u201348 byte-for-byte",
+          "met": true
+        },
+        {
+          "id": "AC-08.5",
+          "text": "README contains a context-window anatomy diagram showing system prompt \u2192 CLAUDE.md \u2192 memory \u2192 conversation history \u2192 current turn",
+          "met": true
+        },
+        {
+          "id": "AC-08.6",
+          "text": "README 'Why this layout?' section (4\u20136 sentences) explains position choices via 'lost in the middle' (LO 4), resolved-vs-active fidelity tradeoff (LO 2), AND explicitly addresses the pass-complete-history tension (Exam Task 5.1 Knowledge bullet); one sentence must use the word 'scratchpad' to recognize the Playbook synonym for the case-facts block",
+          "met": true
+        },
+        {
+          "id": "AC-08.7",
+          "text": "README before/after token table pulled from runs/<run_id>/budget.json; token-counting methodology named in one sentence",
+          "met": true
+        },
+        {
+          "id": "AC-08.8",
+          "text": "README 'What I'd do next' section (4\u20136 bullets) names at least: (a) session resumption (Module 9 preview), and (b) server-side context-editing betas as the modern API-level alternative \u2014 clear_tool_uses_20250919 (beta context-management-2025-06-27) and compact_20260112 (beta compact-2026-01-12) \u2014 contrasting when application-side pruning is preferable vs when to let the API manage it",
+          "met": true
+        },
+        {
+          "id": "AC-08.9",
+          "text": "README links eval results (eval.jsonl) and shows the per-question pass/fail table for one graded run",
+          "met": true
+        }
+      ]
+    }
+  ],
+  "fixtures": {
+    "transcript": {
+      "path": "data/transcript_48turns.json",
+      "turn_count": 48,
+      "segments": [
+        {
+          "issue_id": "refund",
+          "turns": "1-14",
+          "status": "resolved"
+        },
+        {
+          "issue_id": "subscription",
+          "turns": "15-28",
+          "status": "resolved"
+        },
+        {
+          "issue_id": "payment_update",
+          "turns": "29-48",
+          "status": "active"
+        }
+      ],
+      "target_baseline_tokens": 47000,
+      "baseline_tokens_range": [
+        42000,
+        52000
+      ]
+    },
+    "lookup_order_response": {
+      "path": "data/lookup_order_response.json",
+      "min_top_level_fields": 40,
+      "kept_after_pruning": [
+        "order_id",
+        "order_date",
+        "order_total_usd",
+        "fulfillment_status",
+        "return_eligible_until"
+      ]
+    },
+    "eval_questions": {
+      "path": "data/eval_questions.json",
+      "count": 6,
+      "pass_threshold": 5
+    }
+  },
+  "success_metrics": {
+    "baseline_token_count": {
+      "target_range": [
+        42000,
+        52000
+      ],
+      "actual": 47144
+    },
+    "assembled_token_count": {
+      "target_max": 24000,
+      "actual": 20350
+    },
+    "reduction_pct_vs_baseline": {
+      "target_min": 50,
+      "actual": 56.83
+    },
+    "resolved_summaries_token_cost_combined": {
+      "target_max": 1000,
+      "actual": 661
+    },
+    "case_facts_block_token_cost": {
+      "target_max": 600,
+      "actual": 149
+    },
+    "pruned_lookup_order_token_cost": {
+      "target_max": 200,
+      "actual": null,
+      "note": "verified by test_pruner; not measured in pipeline"
+    },
+    "active_segment_byte_exact": {
+      "target": "passes",
+      "actual": "passes"
+    },
+    "eval_pass_rate_compressed": {
+      "target": "5/6",
+      "actual": "6/6"
+    },
+    "control_eval_q6_fails_without_case_facts": {
+      "target": "Q6 fails",
+      "actual": "Q6 fails (Q1 passes \u2014 refund summary preserved $22.14 verbatim)"
+    },
+    "antipattern_audit": {
+      "target": "passes",
+      "actual": "passes (17/17 tests green)"
+    },
+    "api_spend_per_full_pipeline_run_usd": {
+      "target_max": 0.5,
+      "actual": null,
+      "note": "ran via Claude Code CLI subscription; SDK billing path not exercised"
+    },
+    "total_learner_api_spend_usd": {
+      "target_max": 3.0,
+      "actual": null
+    },
+    "learner_build_hours": {
+      "target": 4,
+      "actual": null
+    },
+    "stories_passing": {
+      "target": "8/8",
+      "actual": "7/8 (US-01 Docker scaffold deferred per build directive)"
+    }
+  },
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "text": "Token counter algorithm \u2014 any consistent methodology works; Exam Guide out-of-scopes tokenization specifics",
+      "status": "resolved",
+      "resolution": "informational \u2014 learner documents choice in README; no scaffolding decision required"
+    },
+    {
+      "id": "OQ-2",
+      "text": "Case-facts extraction: Claude call vs deterministic parse of annotated fixture",
+      "status": "open",
+      "lean": "Claude extraction \u2014 extraction is the LO; cost bounded by US-03 \u2264 $0.10"
+    },
+    {
+      "id": "OQ-3",
+      "text": "Ship a 'lost in the middle' negative variant (case facts placed mid-history) to quantify the position effect?",
+      "status": "open",
+      "scope": "stand-out suggestion, not required"
+    },
+    {
+      "id": "OQ-4",
+      "text": "Active-issue boundary fixed at turn 29 vs learner-detected \u2014 detection is richer but drifts into Module 9",
+      "status": "open",
+      "lean": "fixed via fixture annotation for Module 2"
+    },
+    {
+      "id": "OQ-5",
+      "text": "Compression prompt template \u2014 provide starter or require learners to write their own?",
+      "status": "open",
+      "lean": "provide starter; strategy is the LO, not prompt-craft"
+    },
+    {
+      "id": "OQ-6",
+      "text": "Run Q3/Q4 against a variant where active is also summarized, to show fidelity loss?",
+      "status": "open",
+      "scope": "stand-out suggestion"
+    },
+    {
+      "id": "OQ-7",
+      "text": "Application-side pruning (this project) vs server-side context editing (clear_tool_uses_20250919, compact_20260112) \u2014 the Module 2 cookbooks teach server-side; this project teaches the application-side counterpart Exam Task 5.1 emphasizes ('before they accumulate in context'). Ship optional appendix lab comparing the two?",
+      "status": "open",
+      "scope": "stand-out suggestion \u2014 would strengthen LO 2 + LO 6 contrast"
+    },
+    {
+      "id": "OQ-8",
+      "text": "Default model: Haiku 4.5 (keeps project < $0.50/run) vs Sonnet 4.6 (matches Module 2 cookbook labs, higher-fidelity summaries)",
+      "status": "open",
+      "owner": "build team",
+      "lean": "Haiku default; learners may override via --model"
+    }
+  ]
+}
