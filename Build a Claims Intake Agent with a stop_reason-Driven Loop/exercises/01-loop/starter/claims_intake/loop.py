@@ -94,6 +94,15 @@ def run(
         #     input_tokens:   input_tokens
         #     output_tokens:  output_tokens
         # Call `tracer.write(record)`.
+        record = {
+            "turn": turn,
+            "stop_reason": response.stop_reason,
+            "tool_calls": [{"id": block.id, "name": block.name, "input": block.input} for block in response.content if block.type == "tool_use"],
+            "latency_ms": round(latency_ms, 1),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        tracer.write(record)
 
         # TODO:Triage on response.stop_reason. The whole point of the
         # agentic loop is that THIS is what drives control flow — not the message text,
@@ -118,4 +127,24 @@ def run(
         # Case 3: anything else
         #   Raise UnexpectedStopReason naming the turn and the offending stop_reason.
         #   Do NOT silently retry, do NOT guess, do NOT treat max_tokens as success.
-        raise NotImplementedError("Exercise 1: implement the stop_reason triage")
+        if response.stop_reason == "end_turn":
+            working_messages.append({"role": "assistant", "content": response.content})
+            return FinalState(
+                messages=working_messages, 
+                total_input_tokens=total_input, 
+                total_output_tokens=total_output, 
+                turn_count=turn, 
+                final_content=response.content)
+        elif response.stop_reason == "tool_use":
+            working_messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    result = tool_executor(block.name, dict(block.input))
+                    tool_results.append({
+                        "type": "tool_result", 
+                        "tool_use_id": block.id, 
+                        "content": result})
+            working_messages.append({"role": "user", "content": tool_results})            
+        else:
+            raise UnexpectedStopReason(f"Turn {turn} stopped with unexpected stop reason: {response} stop_reason")
