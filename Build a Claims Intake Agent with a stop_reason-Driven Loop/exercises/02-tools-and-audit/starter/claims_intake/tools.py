@@ -43,8 +43,53 @@ SEVERITIES = ["low", "medium", "high"]
 #     Commits the model to a severity bucket.
 #
 # Later tools (request_clarification, route_to_adjuster, escalate_to_human) extend this list.
-TOOL_SCHEMAS: list[dict[str, Any]] = []
 
+
+lookup_policy_schema = {
+    "name": "lookup_policy",
+    "description": "Lookup a policy by policy_id",
+    "input_schema": {
+        "type": "object",
+        "properties": {"policy_id": {"type": "string"}},
+        "required": ["policy_id"],
+    },
+}
+record_claim_fact_schema = {
+    "name": "record_claim_fact",
+    "description": "Record a claim fact",
+    "input_schema": {
+        "type": "object",
+        "properties": {"field": {"type": "string"}, "value": {"type": "string"}},
+    },
+}
+
+classify_claim_schema = {
+    "name": "classify_claim",
+    "description": "Classify a claim",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "claim_type": {"type": "string", "enum": CLAIM_TYPES, "description": "The type of claim"}, 
+            "confidence": {"type": "number", "description": "The confidence in the claim type [0,1]"}, 
+            "rationale": {"type": "string", "description": "The rationale for the claim type"},
+        },
+        "required": ["claim_type", "confidence", "rationale"],
+    },
+}
+assess_severity_schema = {
+    "name": "assess_severity",
+    "description": "Assess the severity of a claim",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "severity": {"type": "string", "enum": SEVERITIES, "description": "The severity of the claim"},
+            "rationale": {"type": "string", "description": "The rationale for the severity"},
+        },
+        "required": ["severity", "rationale"],
+    },
+}
+
+TOOL_SCHEMAS: list[dict[str, Any]] = [lookup_policy_schema, record_claim_fact_schema, classify_claim_schema, assess_severity_schema]
 # ----------------------------------------------------------------------------
 # Errors — Graceful Tool Failure shape
 # ----------------------------------------------------------------------------
@@ -58,13 +103,19 @@ def _err(category: str, retryable: bool, message: str) -> str:
     #   message: message
     # The shape is what tool_result content carries when the model needs to read an error
     # and adapt rather than crash the loop.
-    return '{"is_error": true, "message": "TODO: _err not implemented"}'
+    payload = {
+        "is_error": True,
+        "error_category": category,
+        "is_retryable": retryable,
+        "message": message,
+    }
+    return json.dumps(payload)
 
 
 def _ok(payload: dict[str, Any]) -> str:
     # TODO: Return json.dumps(payload). Tool results are always strings;
     # the model parses them on the next turn.
-    return "{}"
+    return json.dumps(payload)
 
 
 # ----------------------------------------------------------------------------
@@ -76,28 +127,50 @@ def _t_lookup_policy(session: ClaimSession, inp: dict[str, Any]) -> str:
     # TODO: Read inp["policy_id"]; if not a string, return a permanent error.
     # Look it up in session.policies; if missing, return a permanent error naming the id.
     # Otherwise return the policy dict via _ok(...).
-    return _err("permanent", False, "TODO: _t_lookup_policy not implemented yet")
+    if not isinstance(inp["policy_id"], str):
+        return _err("permanent", False, "Policy ID must be a string")
+    if inp["policy_id"] not in session.policies:
+        return _err("permanent", False, f"Policy ID {inp['policy_id']} not found")
+    return _ok({session.policies[inp["policy_id"]]})
 
 
 def _t_record_claim_fact(session: ClaimSession, inp: dict[str, Any]) -> str:
     # TODO: Validate inp["field"] and inp["value"] are both strings; store
     # session.case_facts[field] = value; return _ok with {"recorded": True, "field": field,
     # "case_facts_count": len(session.case_facts)}.
-    return _err("permanent", False, "TODO: _t_record_claim_fact not implemented yet")
+    if not isinstance(inp["field"], str):
+        return _err("permanent", False, "Field must be a string")
+    if not isinstance(inp["value"], str):
+        return _err("permanent", False, "Value must be a string")
+    session.case_facts[inp["field"]] = inp["value"]
+    return _ok({"recorded": True, "field": inp["field"], "case_facts_count": len(session.case_facts)})
 
 
 def _t_classify_claim(session: ClaimSession, inp: dict[str, Any]) -> str:
     # TODO: Validate claim_type (in CLAIM_TYPES), confidence (number in [0,1]),
     # rationale (string). Store session.classification = {claim_type, confidence, rationale}
     # and return _ok with the recorded values plus {"recorded": True}.
-    return _err("permanent", False, "TODO: _t_classify_claim not implemented yet")
+    confidence = inp["confidence"]
+    if inp["claim_type"] not in CLAIM_TYPES:
+        return _err("permanent", False, f"Claim type {inp['claim_type']} not in {CLAIM_TYPES}")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 1:
+        return _err("permanent", False, "Confidence must be a number between 0 and 1")
+    if not isinstance(inp["rationale"], str):
+        return _err("permanent", False, "Rationale must be a string")
+    session.classification = {"claim_type": inp["claim_type"], "confidence": inp["confidence"], "rationale": inp["rationale"]}
+    return _ok({"recorded": True, "claim_type": inp["claim_type"], "confidence": inp["confidence"], "rationale": inp["rationale"]})
 
 
 def _t_assess_severity(session: ClaimSession, inp: dict[str, Any]) -> str:
     # TODO: Validate severity (in SEVERITIES) and rationale (string).
     # Store session.severity = {severity, rationale} and return _ok with the recorded
     # values plus {"recorded": True}.
-    return _err("permanent", False, "TODO: _t_assess_severity not implemented yet")
+    if inp["severity"] not in SEVERITIES:
+        return _err("permanent", False, f"Severity {inp['severity']} not in {SEVERITIES}")
+    if not isinstance(inp["rationale"], str):
+        return _err("permanent", False, "Rationale must be a string")
+    session.severity = {"severity": inp["severity"], "rationale": inp["rationale"]}
+    return _ok({"recorded": True, "severity": inp["severity"], "rationale": inp["rationale"]})  
 
 
 def _t_request_clarification(session: ClaimSession, inp: dict[str, Any]) -> str:
