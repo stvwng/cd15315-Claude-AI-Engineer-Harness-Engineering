@@ -56,10 +56,10 @@ def _run_one(
         policy_id=fixture["policy_id"],
         run_dir=run_dir,
         policies=policies,
-        # TODO: Wire the fixture's scripted clarification responses into the
-        # session so request_clarification can return them. The fixture stores them under
-        # the "clarification_responses" key (a dict of question-substring -> reply).
-        clarification_responses={},
+        # The fixture ships its own scripted replies under "clarification_responses"
+        # (a dict of question-keyword-substring -> reply). Pass it straight through;
+        # request_clarification matches the model's question against these keys.
+        clarification_responses=fixture.get("clarification_responses", {}),
     )
     executor = make_executor(session)
     budget = Budget(
