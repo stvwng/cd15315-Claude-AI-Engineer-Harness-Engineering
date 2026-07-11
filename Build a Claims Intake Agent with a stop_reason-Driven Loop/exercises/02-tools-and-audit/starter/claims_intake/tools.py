@@ -131,7 +131,7 @@ def _t_lookup_policy(session: ClaimSession, inp: dict[str, Any]) -> str:
         return _err("permanent", False, "Policy ID must be a string")
     if inp["policy_id"] not in session.policies:
         return _err("permanent", False, f"Policy ID {inp['policy_id']} not found")
-    return _ok({session.policies[inp["policy_id"]]})
+    return _ok(session.policies[inp["policy_id"]])
 
 
 def _t_record_claim_fact(session: ClaimSession, inp: dict[str, Any]) -> str:
