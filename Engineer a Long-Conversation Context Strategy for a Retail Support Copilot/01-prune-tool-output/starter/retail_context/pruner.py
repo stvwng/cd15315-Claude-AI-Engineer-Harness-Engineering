@@ -21,6 +21,25 @@ when it was placed, what it cost, whether it shipped, and the return-window dead
 Implementation: deterministic field selection (no LLM call). The pruner has no
 `anthropic` import — enforced by an AST audit.
 """
+
+"""Deterministic tool-output pruning for the verbose `lookup_order` response.
+
+Why each kept field is the only one that matters for return/refund reasoning:
+  - `order_id`              — identity. Without it the agent cannot tie the
+                              order back to the customer or the CRM.
+  - `order_date`            — anchors the return-window math (most policies are
+                              "N days from order date" or "N days from delivery").
+  - `order_total_usd`       — caps the refund; the agent cannot refund more than
+                              the customer paid.
+  - `fulfillment_status`    — decides refund vs cancel; "delivered" routes through
+                              returns, "in_transit" through cancel.
+  - `return_eligible_until` — the deadline the agent compares against today's date
+                              to decide eligibility. This is the field that does the
+                              most real work in the whole 57-field response.
+
+Implementation: plain field selection in code, no model call. There is no
+`anthropic` import here, and an automated check confirms it.
+"""
 from __future__ import annotations
 from collections import OrderedDict
 
