@@ -42,21 +42,32 @@ def summarize_segment(segment: Segment, *, model: str | None = None) -> Summary:
     #    that only resolved segments are compressed — the active segment must be
     #    preserved byte-exact.
     #
+    if segment.status != "resolved":
+        raise ValueError(f"Segment {segment.issue_id} is {segment.status} but only resolved segments can be compressed")
+    
     # 2. Load the compression prompt template via _load_prompt(). This is the
     #    system message for the Claude call.
-    #
+    system = _load_prompt()
+    
     # 3. Build the user message naming the issue_id and turn range so the model
     #    knows where the segment sits in the transcript:
     #        f"Source segment — issue_id `{segment.issue_id}`, turns "
     #        f"{segment.turn_range[0]}-{segment.turn_range[1]}:\n\n{segment.text}"
     #
+    user = f"""Source segment — issue_id `{segment.issue_id}`, turns 
+           {segment.turn_range[0]}-{segment.turn_range[1]}:\n\n{segment.text}"""
+           
     # 4. Call complete_with_system(system, user, model=model, max_tokens=1024).
     #    It returns a (text, input_tokens, output_tokens) tuple.
     #
+    text, input_tokens, output_tokens = complete_with_system(system, user, model=model, max_tokens=1024)
     # 5. Return a Summary carrying the issue_id, the response text (the
     #    structured summary), and the token counts.
-    raise NotImplementedError("Exercise 3: implement segment summarization")
-
+    return Summary(
+        issue_id=segment.issue_id, 
+        text=text, 
+        input_tokens=input_tokens, 
+        output_tokens=output_tokens)
 
 def compress(transcript: Transcript, *, model: str | None = None) -> Compressed:
     # TODO (Exercise 3): Orchestrate compression across all segments.
@@ -70,10 +81,24 @@ def compress(transcript: Transcript, *, model: str | None = None) -> Compressed:
     #           "\n\n".join(t.render() for t in segment.turns)
     #       Record the active_text and the active_issue_id.
     #
+    summaries = {}
+    active_text = ""
+    active_issue_id = ""
+    for segment in transcript.segments:
+        if segment.status == "resolved":
+            summaries[segment.issue_id] = summarize_segment(segment, model=model)
+        elif segment.status == "active":
+            active_text = "\n\n".join(t.render() for t in segment.turns)
+            active_issue_id = segment.issue_id
+    if not active_text:
+        raise RuntimeError("No active segment in transcript")
     # If no active segment is present in the transcript, raise RuntimeError
     # naming the missing-active condition — the assembled context requires
     # exactly one active segment at the bottom boundary.
     #
     # Return a Compressed carrying the summaries dict, the active_text, and
     # the active_issue_id.
-    raise NotImplementedError("Exercise 3: implement compression orchestration")
+    return Compressed(
+        summaries=summaries, 
+        active_text=active_text,
+        active_issue_id=active_issue_id)
