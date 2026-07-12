@@ -22,6 +22,7 @@ Implementation: deterministic field selection (no LLM call). The pruner has no
 `anthropic` import — enforced by an AST audit.
 """
 from __future__ import annotations
+from collections import OrderedDict
 
 # TODO (Exercise 1): Replace with the exact 5-field tuple, in OUTPUT ORDER.
 # These are the only fields the pruner returns; everything else in the raw
@@ -30,7 +31,13 @@ from __future__ import annotations
 # The 5 fields: order_id, order_date, order_total_usd, fulfillment_status,
 # return_eligible_until — chosen because they are the *only* fields needed for
 # the agent's return/refund decision.
-KEPT_FIELDS: tuple[str, ...] = ()
+KEPT_FIELDS: tuple[str, ...] = (
+    "order_id",
+    "order_date",
+    "order_total_usd",
+    "fulfillment_status",
+    "return_eligible_until",
+)
 
 
 class PrunerMissingFieldError(KeyError):
@@ -52,4 +59,11 @@ def prune_lookup_order(raw: dict) -> dict:
     #
     # Do NOT add an `anthropic` import here — the pruner is deterministic by
     # design. The AST audit will flag any LLM-driven implementation.
-    raise NotImplementedError("Exercise 1: implement deterministic 5-field pruning")
+    missing_fields = [field for field in KEPT_FIELDS if field not in raw.keys()]
+    for field in KEPT_FIELDS:
+        if missing_fields:
+            raise PrunerMissingFieldError(f"Fields {missing_fields} are missing from the raw response")    
+    fields = OrderedDict()
+    for field in KEPT_FIELDS:
+        fields[field] = raw[field]
+    return fields
