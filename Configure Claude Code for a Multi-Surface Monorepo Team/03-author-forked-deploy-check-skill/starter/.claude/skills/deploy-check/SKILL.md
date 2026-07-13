@@ -15,6 +15,20 @@
 # `context` or `allowed-tools` in its skill-frontmatter completions. That's the LSP
 # lagging the product spec, not a problem with your file — see Troubleshooting in
 # the exercise instructions.
+name: deploy-check
+description: Read-only pre-deployment validation checklist for the current branch
+context: fork
+argument-hint: "[check-name] — optional; omit to run all checks, or pass one (e.g. \"uncommitted\", \"migrations\", \"ci\")"
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash(git status:*)
+  - Bash(git diff:*)
+  - Bash(git log:*)
+  - Bash(git ls-files:*)
+  - Bash(gh pr view:*)
+  - Bash(gh pr checks:*)
 ---
 
 # /deploy-check
@@ -43,6 +57,12 @@ TODO: Write a 2-3 line decision rubric explaining why /deploy-check is a SKILL
       always-loaded / universal → CLAUDE.md.
 -->
 
+A **skill** is the right home for `/deploy-check` because the work is **on-demand, forked, and task-specific**: you only need it in the few minutes before a deploy, and its execution produces verbose intermediate output (file enumeration, diff parsing, check traces) that has no value once the verdict is known. Loading any of that into every session would be pure waste.
+
+`CLAUDE.md`, by contrast, is **always-loaded and universal** — it should hold only the conventions that must be present in *every* session regardless of task (e.g. "tests are co-located", "throw `ApiError` for validation failures"). Deploy-check logic is neither always-relevant nor universal, so it does not belong there.
+
+**Rule of thumb:** on-demand / forked / task-specific → **skill**; always-loaded / universal → **CLAUDE.md**. Follow it and `CLAUDE.md` stays scannable instead of growing into a 600-line monolith that taxes context on every session.
+
 ## Why `context: fork`
 
 <!--
@@ -60,6 +80,10 @@ TODO: Write the rationale paragraph for `context: fork`. It MUST do two things:
       `fork_session`). Mention both so a reader who knows the Playbook can map the
       mental model.
 -->
+
+`context: fork` runs the entire checklist in a forked sub-agent so that its verbose intermediate output stays **out of the main session**. A deploy check walks the working tree, inspects diffs, and runs several enumeration passes; none of that noise has any value to the calling conversation once we know whether it is safe to ship. Only the structured verdict summary crosses back — the raw traces are discarded with the fork.
+
+Mechanically, `context: fork` is a Claude Code **product feature** operating at the skill-invocation layer. It is conceptually analogous to the Architect's Playbook **Branching Reality** pattern, which describes session-level forking via `fork_session`: both spin up an isolated branch of execution whose scratch work never pollutes the parent. If you know the Playbook pattern, `context: fork` is that same mental model applied automatically each time this skill is invoked.
 
 ## Checks
 
@@ -83,6 +107,24 @@ shape needs different ones):
   3. CI checks green on the open PR — `gh pr view --json statusCheckRollup`
      reports all required checks as SUCCESS.
 -->
+
+### Clean working tree
+
+- **Detect:** run `git status --porcelain` and inspect its output.
+- **Pass:** the command prints nothing — every change is committed to the branch being shipped.
+- **Fail:** any lines are printed. Surface the count and the first few paths (e.g. "3 uncommitted files: src/api/orders/refund.ts, …") so the author knows to commit or stash before deploying.
+
+### Migrations match the code
+
+- **Detect:** diff the branch against its merge base (`git diff --name-only main...HEAD`) and cross-check: for every new repository query in `src/db/` that references a new table or column, confirm a matching `NNNN__*.sql` migration file appears in the same diff.
+- **Pass:** every schema-touching code change is backed by a forward migration committed on the same branch.
+- **Fail:** code references a table/column with no accompanying migration (or a migration exists with no code using it). Surface the specific repository file and the missing migration so the author can add it before the deploy hits an empty schema.
+
+### CI is green on the PR
+
+- **Detect:** run `gh pr checks` (or `gh pr view --json statusCheckRollup`) for the branch's open PR.
+- **Pass:** every required check reports SUCCESS.
+- **Fail:** any required check is FAILURE, PENDING, or missing. Surface the failing check names and their URLs in the summary so the author can open them directly rather than re-deriving which check broke.
 
 ## Output format
 
@@ -109,6 +151,10 @@ TODO: Add a short note explaining that this skill is project-scoped
       `~/.claude/skills/deploy-check-strict/` with a different name. Their
       variant will not be committed to the repo and will not affect teammates.
 -->
+
+This skill is **project-scoped** (`.claude/skills/deploy-check/`), so it lives in git and every teammate runs the exact same three checks — that shared baseline is the point.
+
+If you want a stricter personal gate — say, one that additionally fails when the diff exceeds 500 lines without a sufficiently detailed PR description — create a **parallel** skill under a different name at `~/.claude/skills/deploy-check-strict/`. Because it lives in your home directory rather than the repo, it is never committed and never affects teammates; it layers your extra checks on top of the shared one for your own deploys only.
 
 ## What this skill deliberately does not do
 
