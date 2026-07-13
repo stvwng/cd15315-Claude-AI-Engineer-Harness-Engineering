@@ -81,9 +81,21 @@ def _build(run_dir: Path) -> tuple[Any, Any, Any]:
     #                                compressed.summaries[issue_id]
     #
     # Write json.dumps(budget, indent=2) to `run_dir / "budget.json"`.
-    budget: dict[str, Any] = {}
-    raise NotImplementedError("Exercise 3: build the coherent budget dict and write budget.json")
-
+    budget: dict[str, Any] = {
+        "token_counter_methodology": tokens.methodology(),
+        "baseline_tokens": baseline,
+        "assembled_tokens": total,
+        "reduction_pct": round((1 - total / baseline) * 100, 2) if baseline else 0,
+        "per_section_tokens": section_tokens,
+        "compression_api": {
+            issue_id: {
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
+            }
+            for issue_id, s in compressed.summaries.items()
+        },
+    }
+    (run_dir / "budget.json").write_text(json.dumps(budget, indent=2))
     print()
     print(f"      assembled tokens: {total}  ({budget['reduction_pct']}% reduction)")
     for k, v in section_tokens.items():
