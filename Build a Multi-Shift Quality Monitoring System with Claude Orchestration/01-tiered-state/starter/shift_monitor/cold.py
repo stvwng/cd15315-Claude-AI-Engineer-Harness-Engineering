@@ -21,4 +21,12 @@ class ColdStore:
         #     count (from WarmStore.top_components_for_month), one per bullet
         # An empty month should still produce a valid file with `Total defects: 0`.
         # Return the path to the written file.
-        raise NotImplementedError
+        self.cold_dir.mkdir(parents=True, exist_ok=True)
+        path = self.cold_dir / f"{year:04d}-{month:02d}.md"
+        with open(path, "w") as f:
+            f.write(f"# {year:04d}-{month:02d}\n")
+            f.write(f"Total defects: {self.store.count_for_month(year, month)}\n")
+            f.write("## Top components\n")
+            for component, count in self.store.top_components_for_month(year, month):
+                f.write(f"- {component}: {count} defects\n")
+            return path
