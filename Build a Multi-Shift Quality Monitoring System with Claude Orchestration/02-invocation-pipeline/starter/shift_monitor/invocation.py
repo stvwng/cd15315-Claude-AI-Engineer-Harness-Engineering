@@ -22,6 +22,35 @@ class Invocation:
     prompt: str
 
 
+# Descriptions are free text from the shop floor and occasionally run long. Cap
+# them so prompt size scales with the defect count alone, not with how verbose
+# any one operator was.
+MAX_DESCRIPTION_CHARS = 120
+MAX_PAYLOAD_CHARS = 80
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _defect_bullets(
+    defects: Sequence[Mapping[str, Any]], *, include_shift: bool
+) -> list[str]:
+    """One bullet per defect, or a single `- (none)` when there are none."""
+    if not defects:
+        return ["- (none)"]
+    bullets: list[str] = []
+    for d in defects:
+        fields = [str(d.get("id", "")), str(d.get("ts", ""))]
+        if include_shift:
+            fields.append(f"shift {d.get('shift', '')}")
+        fields.append(str(d.get("component", "")))
+        fields.append(str(d.get("severity", "")))
+        fields.append(_truncate(str(d.get("description", "")), MAX_DESCRIPTION_CHARS))
+        bullets.append("- " + " | ".join(fields))
+    return bullets
+
+
 def thin(prompt: str) -> Invocation:
     # TODO: Return an Invocation with shape="thin" and the prompt unchanged.
     # The thin shape is for one-shot calls that don't need any project state.
@@ -40,28 +69,32 @@ def rich(
     #   - A trailing instruction asking for: Summary, Findings, Recommended
     #     actions, and an Updated hot state proposal as a JSON block.
     # Return an Invocation with shape="rich" and the rendered prompt.
-    prompt = f"""
-    You are the on-call {role} for Northridge Plant 3.
-    ## Current hot state
-    {hot_state.recent_defect_hashes}
-    {hot_state.current_shift_summary}
-    {hot_state.active_alerts}
-    {hot_state.threshold_statuses}
-    ## New defects since last shift
-    {new_defects}
-    ## Latest instruction
-    Provide a summary of the current hot state, any new defects since the last shift, and any recommended actions.
-    Update the hot state with the new defects and any recommended actions.
-    Return the updated hot state as a JSON block.
-    The JSON block should be a valid Python dictionary with the following keys:
-    - "recent_defect_hashes": a list of recent defect hashes
-    - "current_shift_summary": a summary of the current shift
-    - "active_alerts": a list of active alerts
-    - "threshold_statuses": a list of threshold statuses
-    - "recommended_actions": a list of recommended actions
-    - "updated_hot_state": a dictionary with the same keys as the input hot state, but with the new defects and recommended actions applied.
-    """
-    return Invocation(shape="rich", prompt=prompt)
+    alerts = [f"- {a}" for a in hot_state.active_alerts] or ["- (none)"]
+    thresholds = [f"- {k}: {v}" for k, v in hot_state.threshold_statuses.items()] or ["- (none)"]
+    lines = [
+        f"You are the on-call {role} for Northridge Plant 3.",
+        "",
+        "## Current hot state",
+        f"Recent defect hashes: {', '.join(hot_state.recent_defect_hashes) or '(none)'}",
+        f"Current shift summary: {hot_state.current_shift_summary}",
+        "Active alerts:",
+        *alerts,
+        "Threshold statuses:",
+        *thresholds,
+        "",
+        "## New defects since last shift",
+        *_defect_bullets(new_defects, include_shift=True),
+        "",
+        "## Latest instruction",
+        "Respond with these sections:",
+        "- Summary: what happened this shift, in two sentences or fewer.",
+        "- Findings: what the new defects indicate, with the defect ids as evidence.",
+        "- Recommended actions: concrete next steps, most urgent first.",
+        "- Updated hot state: a ```json fenced block with the keys",
+        '  "current_shift_summary", "active_alerts", "threshold_statuses".',
+    ]
+    return Invocation(shape="rich", prompt="\n".join(lines))
+
 
 def resumed(
     session_id: str,
@@ -78,14 +111,23 @@ def resumed(
     #     (id / ts / component / severity / description), or "- (none)" if empty.
     # Close with the latest_message under "## Latest instruction".
     # Return an Invocation with shape="resumed".
-    prompt = f"""
-    ## Prior partial findings
-    {prior_steps}
-    ## Prior summary
-    {summary}
-    ## New defects since last partial step
-    {new_defects}
-    ## Latest instruction
-    {latest_message}
-    """
-    return Invocation(shape="resumed", prompt=prompt)
+    steps = [
+        f"- {s.get('name', '')}: {_truncate(str(s.get('payload', '')), MAX_PAYLOAD_CHARS)}"
+        for s in prior_steps
+    ] or ["- (none)"]
+    lines = [
+        f"Resuming session {session_id}.",
+        "",
+        "## Prior partial findings",
+        *steps,
+        "",
+        "## Prior summary",
+        summary,
+        "",
+        "## New defects since last partial step",
+        *_defect_bullets(new_defects, include_shift=False),
+        "",
+        "## Latest instruction",
+        latest_message,
+    ]
+    return Invocation(shape="resumed", prompt="\n".join(lines))
