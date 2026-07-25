@@ -25,7 +25,7 @@ class Invocation:
 def thin(prompt: str) -> Invocation:
     # TODO: Return an Invocation with shape="thin" and the prompt unchanged.
     # The thin shape is for one-shot calls that don't need any project state.
-    raise NotImplementedError
+    return Invocation(shape="thin", prompt=prompt)
 
 
 def rich(
@@ -40,8 +40,28 @@ def rich(
     #   - A trailing instruction asking for: Summary, Findings, Recommended
     #     actions, and an Updated hot state proposal as a JSON block.
     # Return an Invocation with shape="rich" and the rendered prompt.
-    raise NotImplementedError
-
+    prompt = f"""
+    You are the on-call {role} for Northridge Plant 3.
+    ## Current hot state
+    {hot_state.recent_defect_hashes}
+    {hot_state.current_shift_summary}
+    {hot_state.active_alerts}
+    {hot_state.threshold_statuses}
+    ## New defects since last shift
+    {new_defects}
+    ## Latest instruction
+    Provide a summary of the current hot state, any new defects since the last shift, and any recommended actions.
+    Update the hot state with the new defects and any recommended actions.
+    Return the updated hot state as a JSON block.
+    The JSON block should be a valid Python dictionary with the following keys:
+    - "recent_defect_hashes": a list of recent defect hashes
+    - "current_shift_summary": a summary of the current shift
+    - "active_alerts": a list of active alerts
+    - "threshold_statuses": a list of threshold statuses
+    - "recommended_actions": a list of recommended actions
+    - "updated_hot_state": a dictionary with the same keys as the input hot state, but with the new defects and recommended actions applied.
+    """
+    return Invocation(shape="rich", prompt=prompt)
 
 def resumed(
     session_id: str,
@@ -58,4 +78,14 @@ def resumed(
     #     (id / ts / component / severity / description), or "- (none)" if empty.
     # Close with the latest_message under "## Latest instruction".
     # Return an Invocation with shape="resumed".
-    raise NotImplementedError
+    prompt = f"""
+    ## Prior partial findings
+    {prior_steps}
+    ## Prior summary
+    {summary}
+    ## New defects since last partial step
+    {new_defects}
+    ## Latest instruction
+    {latest_message}
+    """
+    return Invocation(shape="resumed", prompt=prompt)

@@ -32,18 +32,17 @@ class ShiftResult:
 def gather_new_defects(
     warm: WarmStore, since_ts: str, limit: int = 50
 ) -> list[dict[str, Any]]:
-    # TODO: Return WarmStore.defects_since(since_ts, limit=limit) — nothing more.
-    # This must be a pure pass-through to SQL. No Python-side filtering of
-    # severity, component, or time. The test scans this function's source with
-    # AST and rejects any `if` / `filter` / `[x for x in ... if ...]` you add.
-    raise NotImplementedError
+    # Pure pass-through to SQL: no Python-side narrowing of severity, component,
+    # or time. A test scans this function's source and rejects branching or
+    # comprehension tokens, so keep the body a single delegating return.
+    return warm.defects_since(since_ts, limit=limit)
 
 
 def build_rich_prompt(
     role: str, hot_state: HotState, new_defects: Sequence[Mapping[str, Any]]
 ) -> str:
     # TODO: Build a rich invocation and return its rendered prompt string.
-    raise NotImplementedError
+    return rich(role, hot_state, new_defects).prompt
 
 
 def _parse_hot_state_update(response_text: str) -> dict[str, Any] | None:
@@ -111,4 +110,36 @@ def run_shift(
     #      (hypothesis_id=f"shift-{shift_id}", evidence + conclusion derived
     #      from the response, ts=datetime.now(UTC)).
     #   9. Return ShiftResult(shift_id, new_defect_count, summary).
-    raise NotImplementedError
+    hot_state = HotState.from_path(hot_state_path)
+    new_defects = gather_new_defects(warm, since_ts)
+    prompt = build_rich_prompt(role, hot_state, new_defects)
+
+    # Exactly one call per shift — everything above narrows the context, and
+    # everything below consumes this single response.
+    response = client.complete([Message(role="user", content=prompt)])
+
+    # A response with no JSON fence, or a malformed one, leaves the prior
+    # values in place rather than dropping state on the floor.
+    update = _parse_hot_state_update(response.content) or {}
+    updated_hot_state = _trim_to_budget(
+        HotState(
+            recent_defect_hashes=_new_hashes(new_defects, hot_state.recent_defect_hashes),
+            current_shift_summary=update.get(
+                "current_shift_summary", hot_state.current_shift_summary
+            ),
+            active_alerts=update.get("active_alerts", hot_state.active_alerts),
+            threshold_statuses=update.get("threshold_statuses", hot_state.threshold_statuses),
+        )
+    )
+    updated_hot_state.write_atomic(hot_state_path)
+
+    summary = _short_summary_from_response(response.content, shift_id)
+    Scratchpad(scratchpad_path).append(
+        ScratchpadEntry(
+            hypothesis_id=f"shift-{shift_id}",
+            evidence=f"{len(new_defects)} new defects since {since_ts}",
+            conclusion=summary,
+            ts=datetime.now(UTC),
+        )
+    )
+    return ShiftResult(shift_id, len(new_defects), summary)
