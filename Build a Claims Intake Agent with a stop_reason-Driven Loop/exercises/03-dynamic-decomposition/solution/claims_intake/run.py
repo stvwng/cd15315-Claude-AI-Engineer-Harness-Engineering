@@ -63,6 +63,24 @@ def _run_one(
         max_input_tokens=max_input_tokens,
         max_wall_clock_s=max_wall_clock_s,
     )
+    def _terminal_check() -> str | None:
+        """A claim is finished only once a terminal tool has fired.
+
+        Lives here, not in loop.py: "finished" is a claims-domain fact, and the
+        loop stays generic. Returning a message rather than raising lets the
+        model recover in-conversation instead of losing the whole run.
+        """
+        if session.terminal_called:
+            return None
+        return (
+            "You ended your turn without taking a terminal action. Every claim must "
+            "end with exactly one call to route_to_adjuster or escalate_to_human. "
+            "If you still need information from the claimant, call request_clarification "
+            "— do not ask in plain text, because the claimant only ever sees that tool. "
+            "If the missing information cannot be obtained, call escalate_to_human now "
+            "with what you have."
+        )
+
     trace_path = run_dir / "traces" / f"{fixture['claim_id']}.jsonl"
     t0 = time.monotonic()
     state: FinalState | None = None
@@ -78,6 +96,7 @@ def _run_one(
                 tool_executor=executor,
                 budget=budget,
                 tracer=tracer,
+                termination_check=_terminal_check,
             )
         except (BudgetExceeded, UnexpectedStopReason) as exc:
             error = f"{type(exc).__name__}: {exc}"
