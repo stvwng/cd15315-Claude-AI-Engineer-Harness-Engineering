@@ -27,8 +27,11 @@ def fork_for_hypothesis(
     #      `<fork_dir>/hot_state.json`. The base file's bytes must remain
     #      untouched after this call (this is what "shared baseline" means).
     #   3. Return the fork directory path.
-    raise NotImplementedError
 
+    fork_dir = forks_root / hypothesis_id
+    fork_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(base_hot_state_path, fork_dir / "hot_state.json")
+    return fork_dir
 
 def merge_findings(scratchpad_paths: Iterable[Path], main_scratchpad: Path) -> None:
     # TODO: Append every entry from each fork's scratchpad into the main scratchpad.
@@ -39,4 +42,12 @@ def merge_findings(scratchpad_paths: Iterable[Path], main_scratchpad: Path) -> N
     # durability. Use the same append path the rest of the system uses.
     #
     # Skip fork paths that don't exist (a fork may not have produced any findings).
-    raise NotImplementedError
+    main = Scratchpad(main_scratchpad)
+    for scratchpad_path in scratchpad_paths:
+        if not scratchpad_path.exists():
+            continue
+        # Round-trip through the typed reader rather than copying raw lines:
+        # append() takes a ScratchpadEntry, and this rejects a corrupt fork
+        # scratchpad at the source instead of merging bad lines into main.
+        for entry in Scratchpad(scratchpad_path).read():
+            main.append(entry)
