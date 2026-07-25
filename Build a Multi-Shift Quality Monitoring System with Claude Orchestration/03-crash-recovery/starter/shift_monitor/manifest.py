@@ -42,7 +42,13 @@ class Manifest:
         #   3. Encode `step.model_dump_json() + "\n"` as UTF-8 and write it.
         #   4. Flush and fsync the file descriptor *before* returning, so a
         #      crash one nanosecond after this call still leaves the line on disk.
-        raise NotImplementedError
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "ab") as f:
+            # The newline is what makes a line "complete" — a reader arriving
+            # mid-append sees whole lines only, never a half-written record.
+            f.write((step.model_dump_json() + "\n").encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
 
     @classmethod
     def load(cls, path: Path) -> ManifestState:
@@ -52,4 +58,12 @@ class Manifest:
         #   - Otherwise, parse each non-empty line as a Step (Step.model_validate_json).
         #   - `complete` is True iff there is at least one step AND the last
         #     step's name == "complete". (An empty manifest is *not* complete.)
-        raise NotImplementedError
+        if not path.exists():
+            return ManifestState(complete=False, steps=[])
+        steps: list[Step] = []
+        with open(path, "rb") as f:
+            for raw in f:
+                line = raw.decode("utf-8").strip()
+                if line:
+                    steps.append(Step.model_validate_json(line))
+        return ManifestState(complete=len(steps) > 0 and steps[-1].name == "complete", steps=steps)

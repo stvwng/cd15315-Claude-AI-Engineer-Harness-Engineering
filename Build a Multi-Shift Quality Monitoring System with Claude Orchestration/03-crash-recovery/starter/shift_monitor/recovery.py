@@ -17,7 +17,12 @@ from .manifest import ManifestState
 # STALE_RESUME_THRESHOLD_MINUTES = 30. The number is not arbitrary — it's about
 # one-sixteenth of an 8-hour shift; resumes within this window are still on the
 # same shift's working set. Document the rationale in a comment.
-STALE_RESUME_THRESHOLD_MINUTES = 30  # TODO: confirm and document
+# The 30-minute rule sounds arbitrary, but it's anchored to a real operational
+# tempo: a shift is 8 hours, and the working set rolls over with each shift.
+# Resuming an hour-old partial means asking the model to pick up where it was
+# when the world has moved on. Starting fresh with the prior findings injected
+# as a one-paragraph summary is cheaper and produces a better answer.
+STALE_RESUME_THRESHOLD_MINUTES = 30
 
 Decision = Literal["resume", "fresh"]
 
@@ -34,4 +39,10 @@ def decide(state: ManifestState, now: datetime) -> Decision:
     #      otherwise return "fresh".
     #
     # Boundary note: at exactly 30 minutes, "resume" wins. Use `<=`, not `<`.
-    raise NotImplementedError
+    if len(state.steps) == 0:
+        return "fresh"
+    if state.complete:
+        return "fresh"
+    if now - state.steps[-1].ts <= timedelta(minutes=STALE_RESUME_THRESHOLD_MINUTES):
+        return "resume"
+    return "fresh"
