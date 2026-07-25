@@ -19,3 +19,13 @@ uv.lock
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Generated run artifacts. Regenerable by re-running each system; the evidence
+# that matters is copied into the capstone submission/ folder, which is tracked.
+runs/
+
+# The shift monitor writes its tiered state (warm.sqlite, hot_state.json,
+# scratchpads, manifests, forks) into data/ at runtime.
+# Deliberately path-scoped, NOT a bare `data/`: every other project in this repo
+# has a *tracked* data/ directory holding fixtures.
+Build a Multi-Shift Quality Monitoring System with Claude Orchestration/**/data/
