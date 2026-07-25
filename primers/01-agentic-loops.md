@@ -184,6 +184,11 @@ next branch raises, the trace still explains why.
 
 ### 3.4 The three branches
 
+> **Note:** this is the branch structure **as originally shipped**. The working tree
+> has `terminal-nudge.patch` applied (§7.1), which inserts a correction step inside the
+> `end_turn` branch. Read this version first — it's the contract the rest of the system
+> was designed around — then §7.1 for what changed and why.
+
 ```python
     if response.stop_reason == "end_turn":
         working_messages.append({"role": "assistant", "content": response.content})

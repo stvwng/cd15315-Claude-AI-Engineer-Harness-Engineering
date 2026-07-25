@@ -119,6 +119,32 @@ shift_monitor/
 Exercise arc: **1** tiered state (9 tests) → **2** invocation pipeline (+6 = 15) →
 **3** crash recovery (+14 = 29) → **4** fork/scratchpad (+4 = 33).
 
+> ### ⚠️ What is actually wired, and what is not
+>
+> Worth knowing before you go looking for call sites. `run_shift` imports only
+> `client`, `invocation.rich`, `scratchpad`, `state`, and `warm`. The CLI adds nothing
+> beyond `pipeline`, `client`, `state`, `warm`.
+>
+> | Module | Status |
+> |---|---|
+> | `state.py`, `warm.py`, `scratchpad.py`, `client.py` | wired into `run_shift` |
+> | `invocation.rich` | wired |
+> | `invocation.thin`, `invocation.resumed` | built + tested, **no runtime caller** |
+> | `manifest.py` | built + tested, **no runtime caller** |
+> | `recovery.py` | built + tested, **no runtime caller** |
+> | `fork.py` | built + tested, **no runtime caller** |
+> | `cold.py` | built + tested, invoked separately, not per-shift |
+>
+> `grep` confirms it: outside their own modules, `manifest`, `recovery`, and `fork` are
+> imported **only by `tests/`**.
+>
+> This is not a defect — each is an exercise deliverable with its own passing tests, and
+> the capstone evidence run drives them directly rather than through `run_shift`. But it
+> does mean the crash-recovery and fork machinery described in §6–§8 is **available
+> rather than active**: a real deployment would still need to call `Manifest.append_step`
+> around each pipeline stage and consult `decide()` at startup. Read §6–§8 as "here is
+> the mechanism and why it's shaped this way," not "here is what happens every shift."
+
 One shift:
 
 ```
@@ -533,11 +559,11 @@ the pre-existing bytes are untouched, which a passing run alone would never reve
 
 ## 8. `invocation.py` — three prompt shapes
 
-| Shape | Carries | Used when |
-|---|---|---|
-| `thin` | prompt only | one-shot, no project state |
-| `rich` | hot state + new defects | the normal shift run |
-| `resumed` | prior steps + summary + new defects since last step | recovering a partial run |
+| Shape | Carries | Intended for | Wired? |
+|---|---|---|---|
+| `thin` | prompt only | one-shot, no project state | no |
+| `rich` | hot state + new defects | the normal shift run | **yes** — `pipeline.py` |
+| `resumed` | prior steps + summary + new defects since last step | recovering a partial run | no |
 
 `rich` renders defects one per line:
 
@@ -550,8 +576,11 @@ is what `_parse_hot_state_update` reads back. **The prompt's requested keys must
 what the parser consumes** (`current_shift_summary`, `active_alerts`,
 `threshold_statuses`); asking for keys nothing reads is a silent no-op.
 
-`resumed` exists because of §1.4: when `decide()` says resume, the prompt shape must
-carry the partial findings forward explicitly, since the session itself is still new.
+`resumed` exists because of §1.4: a resumed session is still a *new* session, so the
+partial findings have to be carried forward in the prompt itself — there's no
+conversation to pick back up. That's the shape `decide() == "resume"` is meant to
+select. Note the wiring gap flagged in §2: nothing currently calls `decide()` or
+`resumed()` at runtime, so this pairing is designed but not yet connected.
 
 ---
 
@@ -615,9 +644,11 @@ Containment:
   minute.
 - **The warm tier is append-only and authoritative** — hot state can be rebuilt from
   SQLite.
-- **`decide()` bounds propagation** — anything older than 30 minutes forces a fresh
-  start rather than resuming from poisoned context.
 - **Forks are contained by construction** — verified by the unchanged base hash.
+- **`decide()` would bound propagation** — anything older than 30 minutes forces a
+  fresh start rather than resuming from poisoned context. Stated in the conditional
+  because, per §2, nothing calls it at runtime yet; today this is a designed control,
+  not an active one.
 
 ---
 

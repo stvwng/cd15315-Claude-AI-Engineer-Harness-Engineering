@@ -94,10 +94,14 @@ Watch it recur:
 
 | System | Enforced in code | Left to the model |
 |---|---|---|
-| 1 — Claims | A terminal decision *must* be made | *Which* decision (route vs. escalate) |
-| 2 — Context | Active segment preserved byte-exact | What to say in a summary |
-| 3 — Config | `allowed-tools` allowlist | How to conduct a review |
-| 4 — Shift | Hot state ≤ 5,120 bytes; atomic write | What the shift summary says |
+| 1 — Claims | Tool call ordering (classify → assess → route); a terminal decision *must* be made † | *Which* decision (route vs. escalate) |
+| 2 — Context | Active segment preserved byte-exact; resolved-only summarization | What to say in a summary |
+| 3 — Config | `allowed-tools` allowlist; frontmatter structure | How to conduct a review |
+| 4 — Shift | Hot state ≤ 5,120 bytes; atomic write; SQL-side filtering | What the shift summary says |
+
+† The second half of that first cell is the one thing here the **shipped** reference
+does *not* enforce — it's requested in the prompt only. That gap is the measured
+example below, and the fix is [Primer 1 §7.1](01-agentic-loops.md).
 
 The failure mode when you get this wrong is instructive, and this repo has a
 *measured* example. System 1's system prompt says "Choose exactly one terminal

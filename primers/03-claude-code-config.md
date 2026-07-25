@@ -661,6 +661,11 @@ small summary. The scratchpad pattern recurs across all four systems.
   The validator catches it; nothing else will.
 - **A typo'd `@import` fails silently** in Claude Code itself — the standard just never
   loads. Run the validator, or `/memory`.
+- **`_PROJECT_LEVEL_RE` in `claude_md.py` is the only scope regex without
+  `re.IGNORECASE`.** It passes on the shipped `CLAUDE.md` because the prose happens to
+  contain lowercase "project-level" and the string `.claude/CLAUDE.md`. Write the same
+  idea as "Project-Level" in a table and nowhere else, and the check fails with a
+  message that won't tell you capitalization was the problem.
 - **Glob semantics are gitignore-style.** `**/*.test.ts` matches at any depth;
   `*.test.ts` does not.
 - **`/memory` is the diagnostic** when a rule doesn't fire. It shows what actually

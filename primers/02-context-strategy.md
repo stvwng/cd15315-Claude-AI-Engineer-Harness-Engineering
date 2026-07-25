@@ -424,13 +424,24 @@ Details that matter:
   predictable — assembled output shouldn't vary with trailing newlines from an LLM.
 - **`compressed.active_text` is interpolated raw** — no strip, no reflow. That's the
   byte-exactness guarantee.
-- `active_raw_text` is carried on the result so the audit can assert
-  `active_block` contains exactly it.
+- `active_raw_text` mirrors `compressed.active_text` onto the result so a caller can
+  check the assembled body against its source without holding the `Compressed` object.
+  The shipped `test_active_segment_byte_exact` doesn't actually use it — it asserts
+  `compressed.active_text in assembled.markdown`, and again after the active header —
+  so the field is available for that check rather than currently driving it.
 - Sections are **exclusive** — no interleaving. A reader (human or model) can locate
   "the resolved refund thread" as one contiguous block.
 
-`section_tokens()` counts each block through `tokens.count`, which is what makes
-`budget.json`'s per-section numbers sum coherently to the total.
+`section_tokens()` counts each block through `tokens.count`, and `total_tokens()` counts
+the whole `markdown` string.
+
+> **They don't sum exactly, and that's expected.** In the reference run the sections add
+> to **16,923** while the assembled total is **16,905** — an 18-token gap. Tokenization
+> is not additive: counting four strings separately and counting their concatenation are
+> different operations, because tokens straddle the joins. Treat per-section numbers as
+> an accurate *breakdown of where the weight sits*, not as an arithmetic decomposition
+> of the total. If you ever see them match to the token, something is summing rather
+> than measuring.
 
 ---
 
