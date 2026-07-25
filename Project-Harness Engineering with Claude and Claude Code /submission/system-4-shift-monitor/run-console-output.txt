@@ -1,0 +1,48 @@
+# System 4 — full offline run (no API spend)
+# Run at: 2026-07-25T22:12:50Z UTC
+
+=== 1. Seed warm tier ===
+warm tier rows: 40
+
+=== 2. run-shift C  (--since 2026-04-01, offline recorded response) ===
+2026-07-25 18:12:51,280 shift_monitor.pipeline INFO run_shift start: shift=C since=2026-04-01T00:00:00Z
+2026-07-25 18:12:51,284 shift_monitor.pipeline INFO run_shift done: shift=C new=17
+shift C: 17 new defects
+Shift C 2026-04-30: 3 high + 2 medium defects on capacitor-bank-C-7, all from lot 2026-0430-B (DAR 0.39, ESR ~19 mOhm); 1 low VP-4 vent squeal (repeat). Lot quarantine recommended.
+EXIT CODE: 0
+
+=== 3. Hot-state byte budget ===
+hot_state.json : 965 bytes
+budget         : 5120 bytes
+headroom       : 4155 bytes (18.8% used)
+
+=== 4. Push-work-down: SQL slice vs full history ===
+warm tier total          : 40 defects
+SQL slice since 2026-04-01T00:00:00Z: 17 defects sent to the model
+withheld from the model  : 23 defects
+query plan:
+    SEARCH defects USING INDEX idx_defects_ts (ts>?)
+
+=== 5. Fork isolation: two competing hypotheses ===
+fork dirs: H1-lot-2026-0430-B | H2-vp4-vent-cycle
+base hot_state unchanged by forking: True  (sha256 110086f286fa379d…)
+H1 scratchpad entries: 1
+H2 scratchpad entries: 1
+H1 sees H2 findings? False
+H2 sees H1 findings? False
+main scratchpad: 1 entries before merge -> 3 after
+merged ids: ['shift-C', 'H1-lot-2026-0430-B', 'H2-vp4-vent-cycle']
+
+=== 6. Crash recovery: resume vs fresh ===
+STALE_RESUME_THRESHOLD_MINUTES = 30
+manifest steps=['gather', 'analyze'] complete=False
+  last step  5m old -> resume
+  last step 30m old -> resume
+  last step 31m old -> fresh
+  last step 90m old -> fresh
+after complete step: complete=True -> decide=fresh
+
+manifest is one JSON line per step (crash-safe append + fsync):
+    {"step_id":"s1","name":"gather","ts":"2026-07-25T22:07:52.005362Z","invocation_shape":"rich","payload":{"defec
+    {"step_id":"s2","name":"analyze","ts":"2026-07-25T22:07:52.005362Z","invocation_shape":"rich","payload":{"clus
+    {"step_id":"s3","name":"complete","ts":"2026-07-25T22:12:52.005362Z","invocation_shape":"rich","payload":{}}

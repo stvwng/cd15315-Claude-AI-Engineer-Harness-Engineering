@@ -1,0 +1,74 @@
+# .claude/ structure
+.claude/commands/review.md
+.claude/rules/api.md
+.claude/rules/react.md
+.claude/rules/tests.md
+.claude/skills/deploy-check/SKILL.md
+.claude/standards/api.md
+.claude/standards/database.md
+.claude/standards/frontend.md
+.claude/standards/testing.md
+
+# CLAUDE.md @-imports (modular standards)
+21:- @.claude/standards/frontend.md
+22:- @.claude/standards/api.md
+23:- @.claude/standards/database.md
+24:- @.claude/standards/testing.md
+
+# --- .claude/rules/api.md — YAML frontmatter (glob paths) ---
+---
+description: Conventions for Node.js API handlers
+paths:
+  - "src/api/**/*"
+---
+
+# --- .claude/rules/react.md — YAML frontmatter (glob paths) ---
+---
+description: Conventions for React components and pages
+paths:
+  - "src/components/**/*"
+  - "src/pages/**/*"
+---
+
+# --- .claude/rules/tests.md — YAML frontmatter (glob paths) ---
+---
+description: Conventions for test files (co-located *.test.ts and *.test.tsx)
+paths:
+  - "**/*.test.tsx"
+  - "**/*.test.ts"
+---
+
+# --- .claude/skills/deploy-check/SKILL.md — frontmatter ---
+---
+name: deploy-check
+description: Run read-only pre-deployment validation in a forked sub-agent and report a single pass/fail summary back to the main session
+context: fork
+argument-hint: "[target-branch] (defaults to main)"
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash(git status:*)
+  - Bash(git diff:*)
+  - Bash(git log:*)
+  - Bash(git rev-parse:*)
+  - Bash(git ls-files:*)
+  - Bash(gh pr view:*)
+  - Bash(gh pr checks:*)
+---
+
+# --- .claude/commands/review.md — frontmatter ---
+---
+description: Run the e-commerce team's PR review checklist against a pull request or local diff
+argument-hint: <pr-number | "HEAD~1..HEAD" | path/to/file>
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash(git diff:*)
+  - Bash(git log:*)
+  - Bash(git show:*)
+  - Bash(git status:*)
+  - Bash(gh pr diff:*)
+  - Bash(gh pr view:*)
+  - Bash(gh pr checks:*)
